@@ -813,7 +813,7 @@ def analyze_announcement_if_urgent(announcement_subject, announcement_content):
 
 
 def add_todolist(name, description, due_date='today', priority=1):
-    api_token = '75e2e16c83f89f8feb618cceb1b4f93260f60631'
+    api_token = os.getenv('TODOIST_API_TOKEN')
     api = TodoistAPI(api_token)
     task = api.add_task(
         content=name,

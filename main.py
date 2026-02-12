@@ -854,26 +854,13 @@ if __name__ == '__main__':
                 print('waiting for next loop')
                 time.sleep(180)
 
-            # finalize_processing_batch(processing_batch)
-            # processing_batch = True
-            # count = 0
-            # while processing_batch:
-            #     count += 1
-            #     print('starting checking processing batch')
-            #     processing_batch = check_processing_batch(new_batch_=new_batch)
-            #     if not processing_batch:
-            #         print('no batch left')
-            #     elif count > 0:
-            #         print('some batches left but terminating')
-            #         finalize_processing_batch(processing_batch)
-            #         break
-            #     else:
-            #         print('waiting for next checking processing batch')
-            #         time.sleep(60)
     except Exception as e:
         if 'SNU server error' in str(e):
             print('SNU server error occurred, skipping email notification')
+        else:
+            error_message = f'에러 발생함\n{datetime.datetime.now()}\n\n{e}\n\n{traceback.format_exc()}'
+            try:
+                requests.get(f"{os.getenv('HEALTHCHECK_SNUPHYA')}/fail", timeout=10)
+            except requests.RequestException as e:
+                print("Ping failed: %s" % e)
             raise
-        error_message = f'에러 발생함\n{datetime.datetime.now()}\n\n{e}\n\n{traceback.format_exc()}'
-        true_email.self_email('snuphya error', error_message)
-        raise

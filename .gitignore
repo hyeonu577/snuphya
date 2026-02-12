@@ -7,3 +7,4 @@ jsonl_file_folder
 *.db-journal
 processing batch list.txt
 *.log
+.sh

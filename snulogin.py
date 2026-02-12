@@ -3,6 +3,8 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
 import selenium.common.exceptions
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 import chromedriver_autoinstaller
 import os
 from selenium.webdriver.common.alert import Alert
@@ -59,18 +61,25 @@ def get_driver():
 
 
 def snu_login(driver):
-    driver.find_element(By.CSS_SELECTOR, 'a[data-authtype="id"]').click()
+    wait = WebDriverWait(driver, 10)
+    button = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'a[data-authtype="id"]')))
+    button.click()
 
     driver.find_element(By.ID, 'user_id').send_keys(os.environ.get('SNU_ID'))
     driver.find_element(By.ID, 'user_passwd').send_keys(os.environ.get('SNU_PASSWORD'))
 
-    driver.find_element(By.ID, 'btn-id-request').click()
+    wait = WebDriverWait(driver, 10)
+    button = wait.until(EC.element_to_be_clickable((By.ID, 'btn-id-request')))
+    button.click()
+    
     time.sleep(1)
 
     # 현재 시간을 timezone-aware로 변환
     now = datetime.datetime.now(pytz.utc)
 
-    driver.find_element(By.ID, 'btn-send-authcode').click()
+    wait = WebDriverWait(driver, 10)
+    button = wait.until(EC.element_to_be_clickable((By.ID, 'btn-send-authcode')))
+    button.click()
     click_alert(driver)
 
     authcode = get_authcode(now)

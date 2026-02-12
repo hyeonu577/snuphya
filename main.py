@@ -871,6 +871,9 @@ if __name__ == '__main__':
             #         print('waiting for next checking processing batch')
             #         time.sleep(60)
     except Exception as e:
+        if 'SNU server error' in str(e):
+            print('SNU server error occurred, skipping email notification')
+            raise
         error_message = f'에러 발생함\n{datetime.datetime.now()}\n\n{e}\n\n{traceback.format_exc()}'
         true_email.self_email('snuphya error', error_message)
         raise

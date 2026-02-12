@@ -14,6 +14,7 @@ import datetime
 import re
 from email.utils import parsedate_to_datetime
 import pytz
+from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -77,9 +78,15 @@ def snu_login(driver):
     # 현재 시간을 timezone-aware로 변환
     now = datetime.datetime.now(pytz.utc)
 
-    wait = WebDriverWait(driver, 10)
-    button = wait.until(EC.element_to_be_clickable((By.ID, 'btn-send-authcode')))
-    button.click()
+    try:
+        wait = WebDriverWait(driver, 10)
+        button = wait.until(EC.element_to_be_clickable((By.ID, 'btn-send-authcode')))
+        button.click()
+    except selenium.common.exceptions.TimeoutException:
+        req = driver.page_source
+        soup_ = BeautifulSoup(req, 'html.parser')
+        if '처리 중 오류가 발생하였습니다.' in soup_.text:
+            raise Exception('SNU server error')
     click_alert(driver)
 
     authcode = get_authcode(now)

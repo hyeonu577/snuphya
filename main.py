@@ -831,7 +831,6 @@ if __name__ == '__main__':
         while datetime.datetime.now().minute % 30 < 15 or first_time:
             first_time = False
             print('starting updating announcement')
-            true_email.self_email('Raspberry Pi', f'[{datetime.datetime.now()}] snuphya starting running')
             try:
                 update_announcement()
             except Exception as e:
@@ -848,7 +847,10 @@ if __name__ == '__main__':
             else:
                 print('some batches left but terminating')
 
-            true_email.self_email('Raspberry Pi', f'[{datetime.datetime.now()}] snuphya successfully finished running')
+            try:
+                requests.get(f"{os.getenv('HEALTHCHECK_SNUPHYA')}", timeout=10)
+            except requests.RequestException as e:
+                print("Ping failed: %s" % e)
             
             if datetime.datetime.now().minute % 30 < 15:
                 print('waiting for next loop')

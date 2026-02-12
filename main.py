@@ -57,12 +57,12 @@ def get_announcement_list():  # 모든 "공지 dictionary"가 담겨있는 list 
                     parsed_data = json.load(f)
                     parsed_data_list.append(parsed_data)
             except json.JSONDecodeError:
-                print(f"'{filename}' 파일을 파싱하는 중 오류가 발생했습니다.")
+                print_and_log(f"'{filename}' 파일을 파싱하는 중 오류가 발생했습니다.")
                 raise
             except IOError:
-                print(f"'{filename}' 파일을 읽는 중 오류가 발생했습니다.")
+                print_and_log(f"'{filename}' 파일을 읽는 중 오류가 발생했습니다.")
                 raise
-    # print(f'every announcement list: {parsed_data_list}')
+    # print_and_log(f'every announcement list: {parsed_data_list}')
     return parsed_data_list
 
 
@@ -101,7 +101,7 @@ def update_announcement():
                 ''', (hash_value, title, current_time))
                 conn.commit()
             except sqlite3.Error as e:
-                print(f"데이터베이스 에러 발생: {e}")
+                print_and_log(f"데이터베이스 에러 발생: {e}")
                 raise
 
 
@@ -229,14 +229,14 @@ def update_announcement():
         if response.status_code == 200:
             with open(image_path, "wb") as file:
                 file.write(response.content)
-            print(f"image downloaded: {image_path}")
+            print_and_log(f"image downloaded: {image_path}")
 
             # 이미지를 base64로 인코딩
             with open(image_path, "rb") as image_file:
                 encoded_image = base64.b64encode(image_file.read()).decode('utf-8')
                 return encoded_image
         else:
-            print("이미지 다운로드 실패")
+            print_and_log("이미지 다운로드 실패")
             return False
 
     def prepare_driver():
@@ -265,7 +265,7 @@ def update_announcement():
                         } for a in soup_.find_all('a', href=True)]
         except Exception as e:
             if str(e) == 'file download error':
-                print('file download error, skipping file download')
+                print_and_log('file download error, skipping file download')
                 error_title = get_title(announcement_)
                 error_message = f'파일 다운로드 에러\n{error_title}\n{datetime.datetime.now()}\n\n{e}\n\n{traceback.format_exc()}'
                 true_email.self_email('snuphya error', error_message)
@@ -289,7 +289,7 @@ def update_announcement():
             if count_ > 60:
                 raise Exception('file download error')
         file_path = shutil.move(file_name_, fr'{get_current_path()}file/{file_name_}')
-        print(f'file downloaded: {file_path}')
+        print_and_log(f'file downloaded: {file_path}')
         file_base64 = convert_to_base64(file_path)
         os.remove(file_path)
         return file_base64
@@ -333,7 +333,7 @@ def update_announcement():
                 if not need_to_be_checked(announcement):
                     continue
                 title = get_title(announcement)
-                print(title)
+                print_and_log(title)
                 link = get_link(announcement)
                 view_count = get_view_count(announcement)
                 cookies = driver.get_cookies()
@@ -370,10 +370,10 @@ def update_announcement():
             if finish_loop:
                 return
             if datetime.datetime.now().minute % 30 < 25:
-                print('waiting for next announcement check loop')
+                print_and_log('waiting for next announcement check loop')
                 time.sleep(180)
     except Exception as e:
-        print(f'exception occurred while checking announcements\n{e}')
+        print_and_log(f'exception occurred while checking announcements\n{e}')
         return
 
 
@@ -463,7 +463,7 @@ def generate_batch_file_with_announcement_list(announcement_list):  # batch 작�
     jsonl_file_path = f"{get_current_path()}jsonl_file_folder/{jsonl_file_name}.jsonl"
     with jsonlines.open(jsonl_file_path, mode="w") as writer:
         writer.write_all(jsonl_data)
-    print(f'generated batch file: {jsonl_file_path}')
+    print_and_log(f'generated batch file: {jsonl_file_path}')
     return jsonl_file_path
 
 
@@ -581,7 +581,7 @@ def update_processing_batch_list(text_):
 def start_batch():
     procedendum_announcement_list = get_not_processed_announcement_list()
     if not procedendum_announcement_list:
-        print('no procedendum announcement')
+        print_and_log('no procedendum announcement')
         return
     jsonl_file_path = generate_batch_file_with_announcement_list(procedendum_announcement_list)
     batch = start_processing_batch_file(jsonl_file_path)
@@ -623,7 +623,7 @@ def check_processing_batch(new_batch_):
         except Exception as e_:
             e_ = str(e_)
             if e_ == 'in progress':
-                print(f'{each_batch} in progress')
+                print_and_log(f'{each_batch} in progress')
                 if each_batch == new_batch_:
                     new_left_batch.append(each_batch)
                 continue
@@ -631,7 +631,7 @@ def check_processing_batch(new_batch_):
                 failed_announcement_list = get_announcement_list_with_specific_batch_id(each_batch)
 
                 for each_failed_announcement in failed_announcement_list:
-                    print(f'{each_failed_announcement["title"]} 요약 실패')
+                    print_and_log(f'{each_failed_announcement["title"]} 요약 실패')
                     final_subject = make_email_subject(each_failed_announcement)
                     final_body = (f'요약 전체 실패\n\n\n{each_failed_announcement["body"]}\n\n'
                                   f'확인 시간: {each_failed_announcement["check_time"]}\n'
@@ -661,11 +661,11 @@ def check_processing_batch(new_batch_):
         readable_batch_result = convert_batch_result_into_readable_form(batch_result)
 
         for announcement_hash, announcement_summary in readable_batch_result:
-            print(f'announcement hash: {announcement_hash}')
+            print_and_log(f'announcement hash: {announcement_hash}')
             file_path = f'{get_current_path()}announcement_folder/{announcement_hash}.json'
             with open(file_path, 'r', encoding='UTF-8') as f:
                 announcement_dictionary = json.load(f)
-            print(f'{announcement_dictionary["title"]} 요약 완료')
+            print_and_log(f'{announcement_dictionary["title"]} 요약 완료')
             final_subject = make_email_subject(announcement_dictionary)
             final_body = (f'{announcement_summary}\n\n{announcement_dictionary["body"]}\n\n'
                           f'확인 시간: {announcement_dictionary["check_time"]}\n'
@@ -721,7 +721,7 @@ def related_to_grad_school(_announcement):
 def check_if_urgent():
     to_be_checked_announcement_list = get_not_processed_announcement_list()
     if not to_be_checked_announcement_list:
-        print('no to-be-checked announcement')
+        print_and_log('no to-be-checked announcement')
         return
     for each_announcement in to_be_checked_announcement_list:
         if not related_to_grad_school(each_announcement):
@@ -804,11 +804,11 @@ def analyze_announcement_if_urgent(announcement_subject, announcement_content):
 
         # 파싱된 결과 객체 가져오기
         result = completion.choices[0].message.parsed
-        print(f'{announcement_subject}\n분석 결과: {result}')
+        print_and_log(f'{announcement_subject}\n분석 결과: {result}')
         return result
 
     except Exception as e:
-        print(f"분석 중 에러 발생: {e}")
+        print_and_log(f"분석 중 에러 발생: {e}")
         raise
 
 
@@ -822,7 +822,13 @@ def add_todolist(name, description, due_date='today', priority=1):
         priority=priority,
         labels=['물천인트라넷']
     )
-    print(f"작업 생성 성공: {task.content} (ID: {task.id})")
+    print_and_log(f"작업 생성 성공: {task.content} (ID: {task.id})")
+
+
+def print_and_log(message):
+    global log_lines
+    print(message)
+    log_lines.append(f'[{datetime.datetime.now().isoformat()}] {message}')
 
 
 if __name__ == '__main__':
@@ -830,39 +836,53 @@ if __name__ == '__main__':
         first_time = True
         while datetime.datetime.now().minute % 30 < 15 or first_time:
             first_time = False
-            print('starting updating announcement')
+
+            log_lines = []
+            try:
+                requests.get(os.getenv('HEALTHCHECK_SNUPHYA') + "/start", timeout=5)
+            except requests.exceptions.RequestException:
+                pass
+
+            print_and_log('starting updating announcement')
             try:
                 update_announcement()
             except Exception as e:
-                print(f'error occurred while updating announcements: {e}\nretrying')
+                print_and_log(f'error occurred while updating announcements: {e}\nretrying')
                 update_announcement()
-            print('starting checking urgent announcement')
+            print_and_log('starting checking urgent announcement')
             check_if_urgent()
-            print('starting batch')
+            print_and_log('starting batch')
             new_batch = start_batch()
-            print('starting checking processing batch')
+            print_and_log('starting checking processing batch')
             processing_batch = check_processing_batch(new_batch_=new_batch)
             if not processing_batch:
-                print('no batch left')
+                print_and_log('no batch left')
             else:
-                print('some batches left but terminating')
+                print_and_log('some batches left but terminating')
 
             try:
-                requests.get(f"{os.getenv('HEALTHCHECK_SNUPHYA')}", timeout=10)
+                log_payload = "\n".join(log_lines)
+                requests.get(f"{os.getenv('HEALTHCHECK_SNUPHYA')}", data=log_payload.encode('utf-8'), timeout=10)
             except requests.RequestException as e:
-                print("Ping failed: %s" % e)
+                print_and_log("Ping failed: %s" % e)
             
             if datetime.datetime.now().minute % 30 < 15:
-                print('waiting for next loop')
+                print_and_log('waiting for next loop')
                 time.sleep(180)
 
     except Exception as e:
         if 'SNU server error' in str(e):
-            print('SNU server error occurred, skipping email notification')
+            print_and_log('SNU server error occurred, skipping email notification')
+
+            try:
+                log_payload = "\n".join(log_lines)
+                requests.get(f"{os.getenv('HEALTHCHECK_SNUPHYA')}", data=log_payload.encode('utf-8'), timeout=10)
+            except requests.RequestException as e:
+                print_and_log("Ping failed: %s" % e)
         else:
             error_message = f'에러 발생함\n{datetime.datetime.now()}\n\n{e}\n\n{traceback.format_exc()}'
             try:
-                requests.get(f"{os.getenv('HEALTHCHECK_SNUPHYA')}/fail", timeout=10)
+                requests.get(f"{os.getenv('HEALTHCHECK_SNUPHYA')}/fail", data=error_message.encode('utf-8'), timeout=10)
             except requests.RequestException as e:
-                print("Ping failed: %s" % e)
+                print_and_log("Ping failed: %s" % e)
             raise

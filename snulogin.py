@@ -63,10 +63,16 @@ def get_driver():
 
 
 def snu_login(driver):
-    try:
-        requests.get(os.getenv('HEALTHCHECK_SNUPHYA_INTRANET') + '/start', timeout=10)
-    except requests.RequestException as e:
-        print("Ping failed: %s" % e)
+    max_retries = 5
+    for attempt in range(5):
+        try:
+            requests.get(os.getenv('HEALTHCHECK_SNUPHYA_INTRANET') + '/start', timeout=10)
+            break
+        except requests.RequestException as e:
+            print(f"Ping failed (attempt {attempt}/{max_retries}): {e}")
+            time.sleep(attempt)
+            if attempt == max_retries:
+                print("All retry attempts exhausted")
     wait = WebDriverWait(driver, 10)
     button = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'a[data-authtype="id"]')))
     button.click()
@@ -91,10 +97,16 @@ def snu_login(driver):
         req = driver.page_source
         soup_ = BeautifulSoup(req, 'html.parser')
         if '처리 중 오류가 발생하였습니다.' in soup_.text:
-            try:
-                requests.get(os.getenv('HEALTHCHECK_SNUPHYA_INTRANET') + '/fail', timeout=10)
-            except requests.RequestException as e:
-                print("Ping failed: %s" % e)
+            max_retries = 5
+            for attempt in range(5):
+                try:
+                    requests.get(os.getenv('HEALTHCHECK_SNUPHYA_INTRANET') + '/fail', timeout=10)
+                    break
+                except requests.RequestException as e:
+                    print(f"Ping failed (attempt {attempt}/{max_retries}): {e}")
+                    time.sleep(attempt)
+                    if attempt == max_retries:
+                        print("All retry attempts exhausted")
             raise Exception('SNU server error')
     click_alert(driver)
 
@@ -105,10 +117,16 @@ def snu_login(driver):
 
     time.sleep(5)
 
-    try:
-        requests.get(os.getenv('HEALTHCHECK_SNUPHYA_INTRANET'), timeout=10)
-    except requests.RequestException as e:
-        print("Ping failed: %s" % e)
+    max_retries = 5
+    for attempt in range(5):
+        try:
+            requests.get(os.getenv('HEALTHCHECK_SNUPHYA_INTRANET'), timeout=10)
+            break
+        except requests.RequestException as e:
+            print(f"Ping failed (attempt {attempt}/{max_retries}): {e}")
+            time.sleep(attempt)
+            if attempt == max_retries:
+                print("All retry attempts exhausted")
 
 
 def click_alert(driver):

@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 from true_line import true_line
 from todoist_api_python.api import TodoistAPI
 import sqlite3
+from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -38,12 +39,7 @@ def get_openai_client(image=False):
 
 
 def get_current_path():
-    folder_path = '/home/pi/snuphya/'
-    folder_exists = os.path.exists(folder_path)
-    if folder_exists:
-        return folder_path
-    else:
-        return ''
+    return f'{Path(__file__).resolve().parent}/'
 
 
 def get_announcement_list():  # 모든 "공지 dictionary"가 담겨있는 list 반환

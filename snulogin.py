@@ -91,6 +91,10 @@ def snu_login(driver):
         req = driver.page_source
         soup_ = BeautifulSoup(req, 'html.parser')
         if '처리 중 오류가 발생하였습니다.' in soup_.text:
+            try:
+                requests.get(os.getenv('HEALTHCHECK_SNUPHYA_INTRANET') + '/fail', timeout=10)
+            except requests.RequestException as e:
+                print("Ping failed: %s" % e)
             raise Exception('SNU server error')
     click_alert(driver)
 

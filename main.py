@@ -835,7 +835,7 @@ if __name__ == '__main__':
 
             log_lines = []
             max_retries = 5
-            for attempt in range(5):
+            for attempt in range(1, max_retries + 1):
                 try:
                     requests.get(os.getenv('HEALTHCHECK_SNUPHYA') + "/start", timeout=10)
                     break
@@ -862,7 +862,7 @@ if __name__ == '__main__':
             else:
                 print_and_log('some batches left but terminating')
             max_retries = 5
-            for attempt in range(5):
+            for attempt in range(1, max_retries + 1):
                 try:
                     log_payload = "\n".join(log_lines)
                     requests.get(f"{os.getenv('HEALTHCHECK_SNUPHYA')}", data=log_payload.encode('utf-8'), timeout=10)
@@ -882,7 +882,7 @@ if __name__ == '__main__':
             print_and_log('SNU server error occurred, skipping email notification')
 
             max_retries = 5
-            for attempt in range(5):
+            for attempt in range(1, max_retries + 1):
                 try:
                     log_payload = "\n".join(log_lines)
                     requests.get(f"{os.getenv('HEALTHCHECK_SNUPHYA')}", data=log_payload.encode('utf-8'), timeout=10)
@@ -895,7 +895,7 @@ if __name__ == '__main__':
         else:
             error_message = f'에러 발생함\n{datetime.datetime.now()}\n\n{e}\n\n{traceback.format_exc()}'
             max_retries = 5
-            for attempt in range(5):
+            for attempt in range(1, max_retries + 1):
                 try:
                     requests.get(f"{os.getenv('HEALTHCHECK_SNUPHYA')}/fail", data=error_message.encode('utf-8'), timeout=10)
                     break

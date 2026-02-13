@@ -64,7 +64,7 @@ def get_driver():
 
 def snu_login(driver):
     max_retries = 5
-    for attempt in range(5):
+    for attempt in range(1, max_retries + 1):
         try:
             requests.get(os.getenv('HEALTHCHECK_SNUPHYA_INTRANET') + '/start', timeout=10)
             break
@@ -98,7 +98,7 @@ def snu_login(driver):
         soup_ = BeautifulSoup(req, 'html.parser')
         if '처리 중 오류가 발생하였습니다.' in soup_.text:
             max_retries = 5
-            for attempt in range(5):
+            for attempt in range(1, max_retries + 1):
                 try:
                     requests.get(os.getenv('HEALTHCHECK_SNUPHYA_INTRANET') + '/fail', timeout=10)
                     break
@@ -118,7 +118,7 @@ def snu_login(driver):
     time.sleep(5)
 
     max_retries = 5
-    for attempt in range(5):
+    for attempt in range(1, max_retries + 1):
         try:
             requests.get(os.getenv('HEALTHCHECK_SNUPHYA_INTRANET'), timeout=10)
             break

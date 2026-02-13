@@ -15,6 +15,7 @@ import re
 from email.utils import parsedate_to_datetime
 import pytz
 from bs4 import BeautifulSoup
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -62,6 +63,10 @@ def get_driver():
 
 
 def snu_login(driver):
+    try:
+        requests.get(os.getenv('HEALTHCHECK_SNUPHYA_INTRANET') + '/start', timeout=10)
+    except requests.RequestException as e:
+        print("Ping failed: %s" % e)
     wait = WebDriverWait(driver, 10)
     button = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'a[data-authtype="id"]')))
     button.click()
@@ -95,6 +100,11 @@ def snu_login(driver):
     driver.find_element(By.ID, 'btn-id-auth-submit').click()
 
     time.sleep(5)
+
+    try:
+        requests.get(os.getenv('HEALTHCHECK_SNUPHYA_INTRANET'), timeout=10)
+    except requests.RequestException as e:
+        print("Ping failed: %s" % e)
 
 
 def click_alert(driver):

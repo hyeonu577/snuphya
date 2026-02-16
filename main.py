@@ -827,6 +827,19 @@ def print_and_log(message):
     log_lines.append(f'[{datetime.datetime.now().isoformat()}] {message}')
 
 
+def ping_test(url, message):
+    max_retries = 5
+    for attempt in range(1, max_retries + 1):
+        try:
+            requests.get(url, data=message.encode('utf-8'), timeout=10)
+            return True
+        except requests.RequestException as e:
+            print_and_log(f"Ping failed (attempt {attempt}/{max_retries}): {e}")
+            if attempt < max_retries:
+                time.sleep(attempt)
+    print_and_log("All retry attempts exhausted")
+    return False
+
 if __name__ == '__main__':
     try:
         first_time = True
@@ -834,16 +847,7 @@ if __name__ == '__main__':
             first_time = False
 
             log_lines = []
-            max_retries = 5
-            for attempt in range(1, max_retries + 1):
-                try:
-                    requests.get(os.getenv('HEALTHCHECK_SNUPHYA') + "/start", timeout=10)
-                    break
-                except requests.RequestException as e:
-                    print_and_log(f"Ping failed (attempt {attempt}/{max_retries}): {e}")
-                    time.sleep(attempt)
-                    if attempt == max_retries:
-                        print_and_log("All retry attempts exhausted")
+            ping_test(os.getenv('HEALTHCHECK_SNUPHYA') + "/start", "SNUPHYA announcement checker started")
 
             print_and_log('starting updating announcement')
             try:
@@ -861,17 +865,8 @@ if __name__ == '__main__':
                 print_and_log('no batch left')
             else:
                 print_and_log('some batches left but terminating')
-            max_retries = 5
-            for attempt in range(1, max_retries + 1):
-                try:
-                    log_payload = "\n".join(log_lines)
-                    requests.get(f"{os.getenv('HEALTHCHECK_SNUPHYA')}", data=log_payload.encode('utf-8'), timeout=10)
-                    break
-                except requests.RequestException as e:
-                    print_and_log(f"Ping failed (attempt {attempt}/{max_retries}): {e}")
-                    time.sleep(attempt)
-                    if attempt == max_retries:
-                        print_and_log("All retry attempts exhausted")
+            log_payload = "\n".join(log_lines)
+            ping_test(os.getenv('HEALTHCHECK_SNUPHYA'), log_payload)
             
             if datetime.datetime.now().minute % 30 < 15:
                 print_and_log('waiting for next loop')
@@ -881,26 +876,8 @@ if __name__ == '__main__':
         if 'SNU server error' in str(e):
             print_and_log('SNU server error occurred, skipping email notification')
 
-            max_retries = 5
-            for attempt in range(1, max_retries + 1):
-                try:
-                    log_payload = "\n".join(log_lines)
-                    requests.get(f"{os.getenv('HEALTHCHECK_SNUPHYA')}", data=log_payload.encode('utf-8'), timeout=10)
-                    break
-                except requests.RequestException as e:
-                    print_and_log(f"Ping failed (attempt {attempt}/{max_retries}): {e}")
-                    time.sleep(attempt)
-                    if attempt == max_retries:
-                        print_and_log("All retry attempts exhausted")
+            log_payload = "\n".join(log_lines)
+            ping_test(os.getenv('HEALTHCHECK_SNUPHYA'), log_payload)
         else:
             error_message = f'에러 발생함\n{datetime.datetime.now()}\n\n{e}\n\n{traceback.format_exc()}'
-            max_retries = 5
-            for attempt in range(1, max_retries + 1):
-                try:
-                    requests.get(f"{os.getenv('HEALTHCHECK_SNUPHYA')}/fail", data=error_message.encode('utf-8'), timeout=10)
-                    break
-                except requests.RequestException as e:
-                    print_and_log(f"Ping failed (attempt {attempt}/{max_retries}): {e}")
-                    time.sleep(attempt)
-                    if attempt == max_retries:
-                        print_and_log("All retry attempts exhausted")
+            ping_test(os.getenv('HEALTHCHECK_SNUPHYA') + "/fail", error_message)

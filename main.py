@@ -11,8 +11,6 @@ from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from bs4 import BeautifulSoup
-import selenium.common.exceptions
-import chromedriver_autoinstaller
 from html2text import html2text
 import snulogin
 from requests.cookies import cookiejar_from_dict
@@ -124,42 +122,20 @@ def update_announcement():
         return hash_value
 
     def get_driver():
-        def get_linux_driver():
-            chrome_option = webdriver.ChromeOptions()
-            chrome_option.add_argument("--headless")
-            chrome_option.add_argument('--no-sandbox')
-            chrome_option.add_argument('--disable-dev-shm-usage')
-            chrome_option.add_argument('--disable-browser-side-navigation')
+        chrome_option = webdriver.ChromeOptions()
+        chrome_option.add_argument("--headless")
+        chrome_option.add_argument('--window-size=1920,1080')
+        chrome_option.add_argument('--no-sandbox')
+        chrome_option.add_argument('--disable-dev-shm-usage')
+        chrome_option.add_argument('--disable-browser-side-navigation')
 
-            # Chromium 브라우저 경로 지정
-            chrome_option.binary_location = '/usr/bin/chromium-browser'
+        chrome_option.binary_location = os.getenv('CHROMIUM_PATH')
+        chromedriver_path = os.getenv('CHROME_DRIVER_PATH')
 
-            # 수동으로 Chromedriver 경로 지정
-            chromedriver_path = '/usr/lib/chromium-browser/chromedriver'
-
-            s = Service(chromedriver_path)
-            driver_ = webdriver.Chrome(service=s, options=chrome_option)
-            driver_.implicitly_wait(20)
-            return driver_
-
-        def get_win_driver():
-            # 크롬 드라이버
-            chrome_ver = chromedriver_autoinstaller.get_chrome_version().split('.')[0]  # 크롬 버전 확인
-
-            try:
-                s = Service(f'./{chrome_ver}/chromedriver.exe')
-                driver_ = webdriver.Chrome(service=s)
-            except selenium.common.exceptions.WebDriverException:
-                chromedriver_autoinstaller.install(True)
-                s = Service(f'./{chrome_ver}/chromedriver.exe')
-                driver_ = webdriver.Chrome(service=s)
-            driver_.implicitly_wait(20)
-            return driver_
-
-        try:
-            return get_linux_driver()
-        except selenium.common.exceptions.WebDriverException:
-            return get_win_driver()
+        s = Service(chromedriver_path)
+        driver_ = webdriver.Chrome(service=s, options=chrome_option)
+        driver_.implicitly_wait(20)
+        return driver_
 
     def get_soup(driver_):
         req = driver_.page_source

@@ -5,7 +5,6 @@ from selenium.webdriver.chrome.service import Service
 import selenium.common.exceptions
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-import chromedriver_autoinstaller
 import os
 from selenium.webdriver.common.alert import Alert
 import imaplib
@@ -21,45 +20,21 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-def get_linux_driver():
-    # 크롬 드라이버
-    chrome_ver = chromedriver_autoinstaller.get_chrome_version().split('.')[0]  # 크롬 버전 확인
+def get_driver():
     chrome_option = webdriver.ChromeOptions()
-    chrome_option.add_argument("--headless=new")
+    chrome_option.add_argument("--headless")
+    chrome_option.add_argument('--window-size=1920,1080')
     chrome_option.add_argument('--no-sandbox')
     chrome_option.add_argument('--disable-dev-shm-usage')
     chrome_option.add_argument('--disable-browser-side-navigation')
-    try:
-        s = Service(f'/{chrome_ver}/chromedriver')
-        driver_ = webdriver.Chrome(service=s, options=chrome_option)
-    except selenium.common.exceptions.WebDriverException:
-        chromedriver_autoinstaller.install(True)
-        s = Service(f'/{chrome_ver}/chromedriver')
-        driver_ = webdriver.Chrome(service=s, options=chrome_option)
+
+    chrome_option.binary_location = os.getenv('CHROMIUM_PATH')
+    chromedriver_path = os.getenv('CHROME_DRIVER_PATH')
+
+    s = Service(chromedriver_path)
+    driver_ = webdriver.Chrome(service=s, options=chrome_option)
     driver_.implicitly_wait(20)
     return driver_
-
-
-def get_win_driver():
-    # 크롬 드라이버
-    chrome_ver = chromedriver_autoinstaller.get_chrome_version().split('.')[0]  # 크롬 버전 확인
-
-    try:
-        s = Service(f'./{chrome_ver}/chromedriver.exe')
-        driver_ = webdriver.Chrome(service=s)
-    except selenium.common.exceptions.WebDriverException:
-        chromedriver_autoinstaller.install(True)
-        s = Service(f'./{chrome_ver}/chromedriver.exe')
-        driver_ = webdriver.Chrome(service=s)
-    driver_.implicitly_wait(20)
-    return driver_
-
-
-def get_driver():
-    try:
-        return get_linux_driver()
-    except selenium.common.exceptions.WebDriverException:
-        return get_win_driver()
 
 
 def snu_login(driver):

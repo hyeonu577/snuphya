@@ -135,6 +135,12 @@ def update_announcement():
         chrome_option.add_argument('--disable-dev-shm-usage')
         chrome_option.add_argument('--disable-browser-side-navigation')
 
+        prefs = {
+            "download.default_directory": f'{get_current_path()}file/',
+            "download.prompt_for_download": False,
+        }
+        chrome_option.add_experimental_option("prefs", prefs)
+
         chrome_option.binary_location = os.getenv('CHROMIUM_PATH')
         chromedriver_path = os.getenv('CHROME_DRIVER_PATH')
 
@@ -258,18 +264,18 @@ def update_announcement():
                 return encoded_file
         file_href_ = a_tag['href']
         file_name_ = a_tag.get_text(strip=True)
+        file_full_path_ = f'{get_current_path()}file/{file_name_}'
         download_button = driver_.find_element(By.CSS_SELECTOR, f"a[href='{file_href_}']")
         download_button.click()
         count_ = 0
-        while not os.path.exists(file_name_):
+        while not os.path.exists(file_full_path_):
             count_ += 1
             time.sleep(1)
             if count_ > 60:
                 raise Exception('file download error')
-        file_path = shutil.move(file_name_, fr'{get_current_path()}file/{file_name_}')
-        print_and_log(f'file downloaded: {file_path}')
-        file_base64 = convert_to_base64(file_path)
-        os.remove(file_path)
+        print_and_log(f'file downloaded: {file_full_path_}')
+        file_base64 = convert_to_base64(file_full_path_)
+        os.remove(file_full_path_)
         return file_base64
 
     def need_to_be_checked(row):

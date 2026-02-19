@@ -40,6 +40,12 @@ def get_current_path():
     return f'{Path(__file__).resolve().parent}/'
 
 
+def ensure_directories():
+    current_path = get_current_path()
+    for folder in ['announcement_folder', 'jsonl_file_folder', 'image', 'file']:
+        os.makedirs(f'{current_path}{folder}', exist_ok=True)
+
+
 def get_announcement_list():  # 모든 "공지 dictionary"가 담겨있는 list 반환
     parsed_data_list = []
     announcement_folder_path = f'{get_current_path()}announcement_folder'
@@ -817,6 +823,7 @@ def ping_test(url, message):
     return False
 
 if __name__ == '__main__':
+    ensure_directories()
     try:
         first_time = True
         while datetime.datetime.now().minute % 30 < 15 or first_time:

@@ -83,6 +83,15 @@ def update_announcement():
                     created_at TEXT
                 )
             ''')
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS click_counts (
+                    title_hash TEXT PRIMARY KEY,
+                    title TEXT,
+                    click_count INTEGER DEFAULT 0,
+                    first_clicked_at TEXT,
+                    last_clicked_at TEXT
+                )
+            ''')
             conn.commit()
 
 
@@ -108,13 +117,29 @@ def update_announcement():
     def is_checked(hash_value):
         init_db()
         db_path = get_db_path()
-        
+
         with sqlite3.connect(db_path) as conn:
             cursor = conn.cursor()
             cursor.execute('SELECT 1 FROM checked_items WHERE hash_value = ?', (hash_value,))
             result = cursor.fetchone()
-            
+
         return result is not None
+
+
+    def increment_click_count(title_hash_, title_):
+        init_db()
+        current_time = datetime.datetime.now().isoformat()
+        db_path = get_db_path()
+        with sqlite3.connect(db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO click_counts (title_hash, title, click_count, first_clicked_at, last_clicked_at)
+                VALUES (?, ?, 1, ?, ?)
+                ON CONFLICT(title_hash) DO UPDATE SET
+                    click_count = click_count + 1,
+                    last_clicked_at = excluded.last_clicked_at
+            ''', (title_hash_, title_, current_time, current_time))
+            conn.commit()
 
 
     def get_xxh3_128(string):
@@ -238,6 +263,7 @@ def update_announcement():
             return f"File {letter}"
 
         driver_.get(get_link(announcement_))
+        increment_click_count(get_xxh3_128(get_title(announcement_)), get_title(announcement_))
         soup_ = get_soup(driver_)
         soup_ = soup_.find(class_='board-filelist')
         if soup_ is None:
@@ -323,6 +349,7 @@ def update_announcement():
                 cookies = driver.get_cookies()
                 cookies = {cookie['name']: cookie['value'] for cookie in cookies}
                 body = get_text(cookies, link)
+                increment_click_count(get_xxh3_128(title), title)
                 now = datetime.datetime.now()
                 now = str(now)
 

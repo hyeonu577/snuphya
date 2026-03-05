@@ -205,9 +205,18 @@ def update_announcement():
         link_ = 'https://physics.snu.ac.kr' + link_
         return link_
 
-    def get_text(cookies_, link_):
+    def get_category(row):
+        link_ = get_link(row)
+        if 'id=undergraduate' in link_:
+            return '학부'
+        elif 'id=graduate' in link_:
+            return '대학원'
+        return '?'
+
+    def get_text(cookies_, link_, title_, category_):
         for i_ in range(20):
             response = requests.get(link_, cookies=cookies_)
+            increment_click_count(get_xxh3_128(category_ + title_), title_)
             soup_ = BeautifulSoup(response.text, 'html.parser')
             soup_ = soup_.find(class_='board-content clearfix')
             if soup_ is not None:
@@ -263,7 +272,7 @@ def update_announcement():
             return f"File {letter}"
 
         driver_.get(get_link(announcement_))
-        increment_click_count(get_xxh3_128(get_title(announcement_)), get_title(announcement_))
+        increment_click_count(get_xxh3_128(get_category(announcement_) + get_title(announcement_)), get_title(announcement_))
         soup_ = get_soup(driver_)
         soup_ = soup_.find(class_='board-filelist')
         if soup_ is None:
@@ -348,8 +357,7 @@ def update_announcement():
                 view_count = get_view_count(announcement)
                 cookies = driver.get_cookies()
                 cookies = {cookie['name']: cookie['value'] for cookie in cookies}
-                body = get_text(cookies, link)
-                increment_click_count(get_xxh3_128(title), title)
+                body = get_text(cookies, link, title, get_category(announcement))
                 now = datetime.datetime.now()
                 now = str(now)
 
@@ -748,6 +756,8 @@ def check_if_urgent():
                     f'확인 시간: {each_announcement["check_time"]}\n'
                     f'조회수: {each_announcement["view_count"]}\n'
                     f'링크: {each_announcement["link"]}\n')
+            for each_file in each_announcement['file']:
+                body += f'{each_file["code"]}: {each_file["name"]}\n'
             try:
                 if 'image_code' in each_announcement and each_announcement['image_code']:
                     true_email.self_email(subject, body,

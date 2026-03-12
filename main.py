@@ -103,8 +103,8 @@ def update_announcements():
         cookie_manager.login_and_get_cookies()
         update_announcements()
     except Exception as e:
-        logger.info(f'exception occurred while checking announcements\n{e}')
-        return
+        logger.error(f'exception occurred while checking announcements\n{e}')
+        raise
 
 
 def start_batch():
@@ -136,7 +136,7 @@ def check_processing_batch(new_batch_):
             elif e_str == 'failed':
                 failed_list = scraper.get_announcement_list_with_specific_batch_id(each_batch)
                 for announcement in failed_list:
-                    logger.info(f'{announcement["title"]} 요약 실패')
+                    logger.error(f'{announcement["title"]} 요약 실패')
                     subject = notifier.make_email_subject(announcement)
                     body = notifier.format_announcement_body(announcement)
                     notifier.send_announcement_email(subject, body, announcement)
@@ -199,7 +199,7 @@ if __name__ == '__main__':
         try:
             update_announcements()
         except Exception as e:
-            logger.info(f'error occurred while updating announcements: {e}\nretrying')
+            logger.warning(f'error occurred while updating announcements: {e}\nretrying')
             update_announcements()
 
         logger.info('starting checking urgent announcement')
@@ -221,7 +221,7 @@ if __name__ == '__main__':
 
     except Exception as e:
         if 'SNU server error' in str(e):
-            logger.info('SNU server error occurred, skipping email notification')
+            logger.error('SNU server error occurred, skipping email notification')
             log_payload = "\n".join(log_collector.flush_lines())
             ping_test(os.getenv('HEALTHCHECK_SNUPHYA'), log_payload)
             raise

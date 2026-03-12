@@ -62,6 +62,7 @@ def snu_login(driver):
         soup_ = BeautifulSoup(req, 'html.parser')
         if '처리 중 오류가 발생하였습니다.' in soup_.text:
             raise Exception('SNU server error')
+        raise Exception('auth code button not found')
     click_alert(driver)
 
     authcode = get_authcode(now)

@@ -136,7 +136,7 @@ def download_image(img_url, cookies):
         logger.info(f"image downloaded: {image_path}")
         return _file_to_base64(image_path)
     else:
-        logger.info("이미지 다운로드 실패")
+        logger.error("이미지 다운로드 실패")
         return False
 
 
@@ -166,7 +166,7 @@ def get_file_list(response, cookies, link, title):
         return file_list
     except Exception as e:
         if str(e) == 'file download error':
-            logger.info('file download error, skipping file download')
+            logger.error('file download error, skipping file download')
             error_message = (f'파일 다운로드 에러\n{title}\n'
                              f'{datetime.datetime.now()}\n\n{e}\n\n{traceback.format_exc()}')
             true_email.self_email('snuphya error', error_message)

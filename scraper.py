@@ -63,6 +63,8 @@ def get_soup_from_url(url, cookies):
 
 def get_online_announcement_list(soup):
     table = soup.find('tbody')
+    if table is None:
+        raise Exception('SNU server error: page does not contain announcement table')
     return table.find_all('tr')
 
 

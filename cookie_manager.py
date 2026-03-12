@@ -70,4 +70,6 @@ def is_session_valid(response):
         return False
     if 'data-authtype="id"' in response.text:
         return False
+    if '회원전용 페이지입니다' in response.text:
+        return False
     return True

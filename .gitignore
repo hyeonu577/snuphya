@@ -5,6 +5,5 @@ image
 jsonl_file_folder
 *.db
 *.db-journal
-processing batch list.txt
 *.log
 *.sh

@@ -9,14 +9,13 @@ import requests
 from dotenv import load_dotenv
 
 import batch
+import cookie_manager
 import db
 import notifier
 import scraper
 from config import (
     ANNOUNCEMENT_FOLDER,
     ANNOUNCEMENT_URLS,
-    LOOP_SLEEP_SECONDS,
-    MAX_DRIVER_RETRIES,
     MAX_PING_RETRIES,
     ensure_directories,
 )
@@ -52,71 +51,57 @@ logger.addHandler(log_collector)
 # --- Orchestration functions ---
 
 def update_announcements():
-    for i in range(1, MAX_DRIVER_RETRIES + 1):
-        try:
-            driver = scraper.prepare_driver()
-            break
-        except Exception:
-            if i == MAX_DRIVER_RETRIES:
-                raise
-            continue
-    time.sleep(3)
+    cookies = cookie_manager.get_cookies()
 
     try:
-        finish_loop = False
-        inner_loop_first_time = True
-        while datetime.datetime.now().minute % 30 < 25 or inner_loop_first_time:
-            inner_loop_first_time = False
-            announcement_list = []
-            for url in ANNOUNCEMENT_URLS:
-                driver.get(url=url)
-                soup = scraper.get_soup(driver)
-                announcement_list += scraper.get_online_announcement_list(soup)
+        announcement_list = []
+        for url in ANNOUNCEMENT_URLS:
+            soup, response = scraper.get_soup_from_url(url, cookies)
+            if not cookie_manager.is_session_valid(response):
+                logger.info('session expired, re-logging in')
+                cookies = cookie_manager.login_and_get_cookies()
+                soup, response = scraper.get_soup_from_url(url, cookies)
+            announcement_list += scraper.get_online_announcement_list(soup)
 
-            for announcement in announcement_list:
-                if not scraper.need_to_be_checked(announcement):
-                    continue
-                title = scraper.get_title(announcement)
-                logger.info(title)
-                link = scraper.get_link(announcement)
-                view_count = scraper.get_view_count(announcement)
-                cookies = driver.get_cookies()
-                cookies = {cookie['name']: cookie['value'] for cookie in cookies}
-                category = scraper.get_category(announcement)
-                body = scraper.get_text(cookies, link, title, category)
-                now = str(datetime.datetime.now())
+        for announcement in announcement_list:
+            if not scraper.need_to_be_checked(announcement):
+                continue
+            title = scraper.get_title(announcement)
+            logger.info(title)
+            link = scraper.get_link(announcement)
+            view_count = scraper.get_view_count(announcement)
+            category = scraper.get_category(announcement)
+            body = scraper.get_text(cookies, link, title, category)
+            now = str(datetime.datetime.now())
 
-                announcement_hash = db.get_xxh3_128(title + body)
-                if db.is_checked(announcement_hash):
-                    continue
+            announcement_hash = db.get_xxh3_128(title + body)
+            if db.is_checked(announcement_hash):
+                continue
 
-                announcement_dict = {
-                    'hash': announcement_hash,
-                    'title': title,
-                    'body': body,
-                    'link': link,
-                    'check_time': now,
-                    'view_count': view_count,
-                }
+            announcement_dict = {
+                'hash': announcement_hash,
+                'title': title,
+                'body': body,
+                'link': link,
+                'check_time': now,
+                'view_count': view_count,
+            }
 
-                if '![](/webdata/upimages' in body:
-                    image_url_list = scraper.get_image_url(body)
-                    announcement_dict['image_code'] = [
-                        scraper.download_image(url, cookies) for url in image_url_list
-                    ]
+            if '![](/webdata/upimages' in body:
+                image_url_list = scraper.get_image_url(body)
+                announcement_dict['image_code'] = [
+                    scraper.download_image(url, cookies) for url in image_url_list
+                ]
 
-                announcement_dict['file'] = scraper.get_file_list(announcement, driver)
+            announcement_dict['file'] = scraper.get_file_list(announcement, cookies)
 
-                scraper.save_as_json(announcement_dict)
-                db.update_checked_item_list(db.get_xxh3_128(title), f'{title}; title')
-                db.update_checked_item_list(announcement_hash, f'{title}; body')
-                finish_loop = True
-
-            if finish_loop:
-                return
-            if datetime.datetime.now().minute % 30 < 25:
-                logger.info('waiting for next announcement check loop')
-                time.sleep(LOOP_SLEEP_SECONDS)
+            scraper.save_as_json(announcement_dict)
+            db.update_checked_item_list(db.get_xxh3_128(title), f'{title}; title')
+            db.update_checked_item_list(announcement_hash, f'{title}; body')
+    except cookie_manager.SessionExpiredError:
+        logger.info('session expired during processing, re-logging in and retrying')
+        cookie_manager.login_and_get_cookies()
+        update_announcements()
     except Exception as e:
         logger.info(f'exception occurred while checking announcements\n{e}')
         return
@@ -206,41 +191,33 @@ if __name__ == '__main__':
     ensure_directories()
     db.init_db()
     try:
-        first_time = True
-        while datetime.datetime.now().minute % 30 < 15 or first_time:
-            first_time = False
+        log_collector.flush_lines()
+        ping_test(os.getenv('HEALTHCHECK_SNUPHYA') + "/start",
+                  "SNUPHYA announcement checker started")
 
-            log_collector.flush_lines()
-            ping_test(os.getenv('HEALTHCHECK_SNUPHYA') + "/start",
-                      "SNUPHYA announcement checker started")
+        logger.info('starting updating announcement')
+        try:
+            update_announcements()
+        except Exception as e:
+            logger.info(f'error occurred while updating announcements: {e}\nretrying')
+            update_announcements()
 
-            logger.info('starting updating announcement')
-            try:
-                update_announcements()
-            except Exception as e:
-                logger.info(f'error occurred while updating announcements: {e}\nretrying')
-                update_announcements()
+        logger.info('starting checking urgent announcement')
+        urgent_list = scraper.get_not_processed_announcement_list()
+        for announcement in notifier.check_if_urgent(urgent_list):
+            scraper.remove_announcement_json(announcement)
 
-            logger.info('starting checking urgent announcement')
-            urgent_list = scraper.get_not_processed_announcement_list()
-            for announcement in notifier.check_if_urgent(urgent_list):
-                scraper.remove_announcement_json(announcement)
+        logger.info('starting batch')
+        new_batch = start_batch()
+        logger.info('starting checking processing batch')
+        processing_batch = check_processing_batch(new_batch_=new_batch)
+        if not processing_batch:
+            logger.info('no batch left')
+        else:
+            logger.info('some batches left but terminating')
 
-            logger.info('starting batch')
-            new_batch = start_batch()
-            logger.info('starting checking processing batch')
-            processing_batch = check_processing_batch(new_batch_=new_batch)
-            if not processing_batch:
-                logger.info('no batch left')
-            else:
-                logger.info('some batches left but terminating')
-
-            log_payload = "\n".join(log_collector.flush_lines())
-            ping_test(os.getenv('HEALTHCHECK_SNUPHYA'), log_payload)
-
-            if datetime.datetime.now().minute % 30 < 15:
-                logger.info('waiting for next loop')
-                time.sleep(LOOP_SLEEP_SECONDS)
+        log_payload = "\n".join(log_collector.flush_lines())
+        ping_test(os.getenv('HEALTHCHECK_SNUPHYA'), log_payload)
 
     except Exception as e:
         if 'SNU server error' in str(e):

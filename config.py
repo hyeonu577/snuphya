@@ -12,6 +12,7 @@ ANNOUNCEMENT_FOLDER = f'{CURRENT_PATH}announcement_folder'
 JSONL_FOLDER = f'{CURRENT_PATH}jsonl_file_folder'
 IMAGE_FOLDER = f'{CURRENT_PATH}image'
 FILE_FOLDER = f'{CURRENT_PATH}file'
+COOKIE_FILE = f'{CURRENT_PATH}cookies.json'
 
 BASE_URL = 'https://physics.snu.ac.kr'
 

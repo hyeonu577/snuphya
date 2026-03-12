@@ -7,3 +7,4 @@ jsonl_file_folder
 *.db-journal
 *.log
 *.sh
+cookies.json

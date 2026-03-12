@@ -5,27 +5,24 @@ import logging
 import os
 import random
 import re
-import time
 import traceback
 
 import requests
-import snulogin
 from bs4 import BeautifulSoup
 from html2text import html2text
 from requests.cookies import cookiejar_from_dict
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
 from true_email import true_email
+
+import cookie_manager
 
 import db
 from config import (
     ANNOUNCEMENT_FOLDER,
-    ANNOUNCEMENT_URLS,
     BASE_URL,
     FILE_FOLDER,
     IMAGE_FOLDER,
-    MAX_FILE_DOWNLOAD_WAIT,
     MAX_TEXT_FETCH_RETRIES,
 )
 
@@ -57,15 +54,9 @@ def get_driver():
     return driver
 
 
-def get_soup(driver):
-    return BeautifulSoup(driver.page_source, 'html.parser')
-
-
-def prepare_driver():
-    driver = get_driver()
-    driver.get(url=f'{BASE_URL}/intranet/')
-    snulogin.snu_login(driver)
-    return driver
+def get_soup_from_url(url, cookies):
+    response = requests.get(url, cookies=cookies)
+    return BeautifulSoup(response.text, 'html.parser'), response
 
 
 # --- Row parsing helpers ---
@@ -114,6 +105,8 @@ def need_to_be_checked(row):
 def get_text(cookies, link, title, category):
     for _ in range(MAX_TEXT_FETCH_RETRIES):
         response = requests.get(link, cookies=cookies)
+        if not cookie_manager.is_session_valid(response):
+            raise cookie_manager.SessionExpiredError()
         db.increment_click_count(db.get_xxh3_128(category + title), title)
         soup = BeautifulSoup(response.text, 'html.parser')
         content = soup.find(class_='board-content clearfix')
@@ -152,13 +145,16 @@ def _file_to_base64(path):
         return base64.b64encode(f.read()).decode('utf-8')
 
 
-def get_file_list(announcement, driver):
-    driver.get(get_link(announcement))
+def get_file_list(announcement, cookies):
+    link = get_link(announcement)
+    response = requests.get(link, cookies=cookies)
+    if not cookie_manager.is_session_valid(response):
+        raise cookie_manager.SessionExpiredError()
     db.increment_click_count(
         db.get_xxh3_128(get_category(announcement) + get_title(announcement)),
         get_title(announcement)
     )
-    soup = get_soup(driver)
+    soup = BeautifulSoup(response.text, 'html.parser')
     filelist_section = soup.find(class_='board-filelist')
     if filelist_section is None:
         return []
@@ -170,7 +166,7 @@ def get_file_list(announcement, driver):
             extension = name.split('.')[-1]
             file_list.append({
                 'name': name,
-                'base64': _download_file(a, driver),
+                'base64': _download_file(a, cookies),
                 'code': f'File {chr(65 + i)}.{extension}'
             })
         return file_list
@@ -185,18 +181,21 @@ def get_file_list(announcement, driver):
         raise
 
 
-def _download_file(a_tag, driver):
+def _download_file(a_tag, cookies):
     file_href = a_tag['href']
     file_name = a_tag.get_text(strip=True)
     file_full_path = f'{FILE_FOLDER}/{file_name}'
-    download_button = driver.find_element(By.CSS_SELECTOR, f"a[href='{file_href}']")
-    download_button.click()
-    count = 0
-    while not os.path.exists(file_full_path):
-        count += 1
-        time.sleep(1)
-        if count > MAX_FILE_DOWNLOAD_WAIT:
-            raise Exception('file download error')
+
+    download_url = file_href if file_href.startswith('http') else BASE_URL + file_href
+    response = requests.get(download_url, cookies=cookies, stream=True)
+
+    if response.status_code != 200:
+        raise Exception('file download error')
+
+    with open(file_full_path, 'wb') as f:
+        for chunk in response.iter_content(chunk_size=8192):
+            f.write(chunk)
+
     logger.info(f'file downloaded: {file_full_path}')
     file_base64 = _file_to_base64(file_full_path)
     os.remove(file_full_path)

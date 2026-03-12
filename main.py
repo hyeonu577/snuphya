@@ -224,6 +224,7 @@ if __name__ == '__main__':
             logger.info('SNU server error occurred, skipping email notification')
             log_payload = "\n".join(log_collector.flush_lines())
             ping_test(os.getenv('HEALTHCHECK_SNUPHYA'), log_payload)
+            raise
         else:
             error_message = f'에러 발생함\n{datetime.datetime.now()}\n\n{e}\n\n{traceback.format_exc()}'
             ping_test(os.getenv('HEALTHCHECK_SNUPHYA') + "/fail", error_message)

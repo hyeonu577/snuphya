@@ -111,7 +111,7 @@ def get_text(cookies, link, title, category):
         soup = BeautifulSoup(response.text, 'html.parser')
         content = soup.find(class_='board-content clearfix')
         if content is not None:
-            return html2text(str(content))
+            return html2text(str(content)), response
     raise Exception('reached maximum iteration')
 
 
@@ -145,15 +145,7 @@ def _file_to_base64(path):
         return base64.b64encode(f.read()).decode('utf-8')
 
 
-def get_file_list(announcement, cookies):
-    link = get_link(announcement)
-    response = requests.get(link, cookies=cookies)
-    if not cookie_manager.is_session_valid(response):
-        raise cookie_manager.SessionExpiredError()
-    db.increment_click_count(
-        db.get_xxh3_128(get_category(announcement) + get_title(announcement)),
-        get_title(announcement)
-    )
+def get_file_list(response, cookies, link, title):
     soup = BeautifulSoup(response.text, 'html.parser')
     filelist_section = soup.find(class_='board-filelist')
     if filelist_section is None:
@@ -162,32 +154,46 @@ def get_file_list(announcement, cookies):
         a_tags = filelist_section.find_all('a', href=True)
         file_list = []
         for i, a in enumerate(a_tags):
-            name = a.get_text(strip=True)
+            name = _get_file_name(a)
             extension = name.split('.')[-1]
             file_list.append({
                 'name': name,
-                'base64': _download_file(a, cookies),
+                'base64': _download_file(a, cookies, referer=link),
                 'code': f'File {chr(65 + i)}.{extension}'
             })
         return file_list
     except Exception as e:
         if str(e) == 'file download error':
             logger.info('file download error, skipping file download')
-            error_title = get_title(announcement)
-            error_message = (f'파일 다운로드 에러\n{error_title}\n'
+            error_message = (f'파일 다운로드 에러\n{title}\n'
                              f'{datetime.datetime.now()}\n\n{e}\n\n{traceback.format_exc()}')
             true_email.self_email('snuphya error', error_message)
             return []
         raise
 
 
-def _download_file(a_tag, cookies):
+def _get_file_name(a_tag):
+    name = a_tag.get_text(strip=True)
+    if name:
+        return name
+    parent = a_tag.parent
+    if parent:
+        for node in parent.children:
+            if isinstance(node, str):
+                text = node.strip()
+                if text:
+                    return text
+    return 'unknown_file'
+
+
+def _download_file(a_tag, cookies, referer=None):
     file_href = a_tag['href']
-    file_name = a_tag.get_text(strip=True)
+    file_name = _get_file_name(a_tag)
     file_full_path = f'{FILE_FOLDER}/{file_name}'
 
     download_url = file_href if file_href.startswith('http') else BASE_URL + file_href
-    response = requests.get(download_url, cookies=cookies, stream=True)
+    headers = {'Referer': referer} if referer else {}
+    response = requests.get(download_url, cookies=cookies, headers=headers, stream=True)
 
     if response.status_code != 200:
         raise Exception('file download error')

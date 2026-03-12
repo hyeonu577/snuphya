@@ -71,7 +71,7 @@ def update_announcements():
             link = scraper.get_link(announcement)
             view_count = scraper.get_view_count(announcement)
             category = scraper.get_category(announcement)
-            body = scraper.get_text(cookies, link, title, category)
+            body, response = scraper.get_text(cookies, link, title, category)
             now = str(datetime.datetime.now())
 
             announcement_hash = db.get_xxh3_128(title + body)
@@ -93,7 +93,7 @@ def update_announcements():
                     scraper.download_image(url, cookies) for url in image_url_list
                 ]
 
-            announcement_dict['file'] = scraper.get_file_list(announcement, cookies)
+            announcement_dict['file'] = scraper.get_file_list(response, cookies, link, title)
 
             scraper.save_as_json(announcement_dict)
             db.update_checked_item_list(db.get_xxh3_128(title), f'{title}; title')

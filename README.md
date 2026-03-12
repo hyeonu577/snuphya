@@ -7,13 +7,14 @@ Periodically scrapes announcements, summarizes them via OpenAI, and sends notifi
 ## Structure
 
 ```
-main.py        Main loop and orchestration
-config.py      Paths, constants, OpenAI client
-db.py          SQLite (checked items, click counts, batch list)
-scraper.py     Selenium scraping, file/image download, JSON I/O
-batch.py       OpenAI Batch API lifecycle
-notifier.py    Email, LINE, Todoist, urgency analysis
-models.py      Pydantic model (AnnouncementCheck)
+main.py            Main loop and orchestration
+config.py          Paths, constants, OpenAI client
+cookie_manager.py  Cookie-based session login and persistence
+db.py              SQLite (checked items, click counts, batch list)
+scraper.py         HTTP scraping, file/image download, JSON I/O
+batch.py           OpenAI Batch API lifecycle
+notifier.py        Email, LINE, Todoist, urgency analysis
+models.py          Pydantic model (AnnouncementCheck)
 ```
 
 ## Workflow
@@ -25,7 +26,7 @@ models.py      Pydantic model (AnnouncementCheck)
 
 ## External Dependencies
 
-- `snulogin.py` - SNU intranet login with 2FA
+- `snulogin.py` - SNU intranet login with 2FA (used by cookie_manager for initial login)
 - `true_email/` - Email sending (git submodule)
 - `true_line/` - LINE messaging (git submodule)
 

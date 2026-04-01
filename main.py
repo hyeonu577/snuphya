@@ -1,7 +1,9 @@
 import datetime
+import fcntl
 import json
 import logging
 import os
+import sys
 import time
 import traceback
 
@@ -16,6 +18,7 @@ import scraper
 from config import (
     ANNOUNCEMENT_FOLDER,
     ANNOUNCEMENT_URLS,
+    CURRENT_PATH,
     MAX_PING_RETRIES,
     ensure_directories,
 )
@@ -188,6 +191,14 @@ def ping_test(url, message):
 
 
 if __name__ == '__main__':
+    # lock_file must remain open for the process lifetime to hold the flock
+    lock_file = open(f'{CURRENT_PATH}.snuphya.lock', 'w')
+    try:
+        fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        print('Another instance is already running, exiting.')
+        sys.exit(0)
+
     ensure_directories()
     db.init_db()
     try:

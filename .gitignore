@@ -5,6 +5,7 @@ image
 jsonl_file_folder
 *.db
 *.db-journal
+*.lock
 *.log
 *.sh
 cookies.json

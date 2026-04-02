@@ -29,7 +29,11 @@ load_dotenv()
 
 logger = logging.getLogger('snuphya')
 logger.setLevel(logging.INFO)
-logger.addHandler(logging.StreamHandler())
+_log_formatter = logging.Formatter('[%(asctime)s] %(message)s')
+
+stream_handler = logging.StreamHandler()
+stream_handler.setFormatter(_log_formatter)
+logger.addHandler(stream_handler)
 
 
 class LogCollector(logging.Handler):
@@ -47,7 +51,7 @@ class LogCollector(logging.Handler):
 
 
 log_collector = LogCollector()
-log_collector.setFormatter(logging.Formatter('[%(asctime)s] %(message)s'))
+log_collector.setFormatter(_log_formatter)
 logger.addHandler(log_collector)
 
 

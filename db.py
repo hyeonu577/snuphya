@@ -78,6 +78,14 @@ def increment_click_count(title_hash, title):
     conn.commit()
 
 
+def get_click_count(title_hash):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute('SELECT click_count FROM click_counts WHERE title_hash = ?', (title_hash,))
+    result = cursor.fetchone()
+    return result[0] if result else 0
+
+
 def get_xxh3_128(string):
     byte_string = string.encode('utf-8')
     return xxhash.xxh3_128(byte_string).hexdigest()

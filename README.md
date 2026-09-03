@@ -11,6 +11,7 @@ main.py            Main loop and orchestration
 config.py          Paths, constants, OpenAI client
 cookie_manager.py  Cookie-based session login and persistence
 db.py              SQLite (checked items, click counts, batch list)
+healthcheck.py     Healthcheck pings and the login heartbeat
 scraper.py         HTTP scraping, file/image download, JSON I/O
 batch.py           OpenAI Batch API lifecycle
 notifier.py        Email, LINE, Todoist, urgency analysis

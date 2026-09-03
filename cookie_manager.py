@@ -1,9 +1,11 @@
 import datetime
 import json
 import logging
+from contextlib import nullcontext
 
 import requests
 
+import healthcheck
 import scraper
 import snulogin
 from config import BASE_URL, COOKIE_FILE, MAX_DRIVER_RETRIES
@@ -25,37 +27,63 @@ def save_cookies(cookies):
     logger.info('cookies saved')
 
 
-def load_cookies():
+def _read_cookie_file():
     try:
         with open(COOKIE_FILE, 'r', encoding='utf-8') as f:
             data = json.load(f)
-        cookies = data.get('cookies')
-        if cookies:
-            return cookies
-    except (FileNotFoundError, json.JSONDecodeError, KeyError):
-        pass
-    return None
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def load_cookies():
+    data = _read_cookie_file()
+    if data is None:
+        return None
+    return data.get('cookies') or None
+
+
+def is_first_login_of_day():
+    data = _read_cookie_file()
+    if data is None:
+        return True
+    try:
+        saved_at = datetime.datetime.fromisoformat(data['saved_at'])
+    except (KeyError, TypeError, ValueError):
+        return True
+    return saved_at.date() != datetime.date.today()
 
 
 def login_and_get_cookies():
-    for i in range(1, MAX_DRIVER_RETRIES + 1):
-        try:
-            driver = scraper.get_driver()
-            driver.get(url=f'{BASE_URL}/intranet/')
-            snulogin.snu_login(driver)
-            cookies = driver.get_cookies()
-            cookies = {cookie['name']: cookie['value'] for cookie in cookies}
-            driver.quit()
-            save_cookies(cookies)
-            return cookies
-        except Exception:
+    # The day's first login needs a fresh 2FA round trip and can outrun the
+    # healthcheck grace period, so keep the check up while it runs.
+    if is_first_login_of_day():
+        logger.info('first login of the day, sending healthcheck heartbeat while logging in')
+        heartbeat = healthcheck.heartbeat('first login of the day in progress')
+    else:
+        heartbeat = nullcontext()
+
+    with heartbeat:
+        for i in range(1, MAX_DRIVER_RETRIES + 1):
             try:
+                driver = scraper.get_driver()
+                driver.get(url=f'{BASE_URL}/intranet/')
+                snulogin.snu_login(driver)
+                cookies = driver.get_cookies()
+                cookies = {cookie['name']: cookie['value'] for cookie in cookies}
                 driver.quit()
+                save_cookies(cookies)
+                return cookies
             except Exception:
-                pass
-            if i == MAX_DRIVER_RETRIES:
-                raise
-            continue
+                try:
+                    driver.quit()
+                except Exception:
+                    pass
+                if i == MAX_DRIVER_RETRIES:
+                    raise
+                continue
+
+    raise RuntimeError('login retries exhausted')
 
 
 def get_cookies():

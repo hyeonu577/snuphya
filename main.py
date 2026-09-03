@@ -2,24 +2,21 @@ import datetime
 import fcntl
 import json
 import logging
-import os
 import sys
-import time
 import traceback
 
-import requests
 from dotenv import load_dotenv
 
 import batch
 import cookie_manager
 import db
+import healthcheck
 import notifier
 import scraper
 from config import (
     ANNOUNCEMENT_FOLDER,
     ANNOUNCEMENT_URLS,
     CURRENT_PATH,
-    MAX_PING_RETRIES,
     ensure_directories,
 )
 
@@ -45,8 +42,12 @@ class LogCollector(logging.Handler):
         self.records.append(self.format(record))
 
     def flush_lines(self):
-        lines = list(self.records)
-        self.records.clear()
+        self.acquire()
+        try:
+            lines = list(self.records)
+            self.records.clear()
+        finally:
+            self.release()
         return lines
 
 
@@ -181,19 +182,6 @@ def check_processing_batch(new_batch_):
     return new_left_batch
 
 
-def ping_test(url, message):
-    for attempt in range(1, MAX_PING_RETRIES + 1):
-        try:
-            requests.get(url, data=message.encode('utf-8'), timeout=10)
-            return True
-        except requests.RequestException as e:
-            logger.info(f"Ping failed (attempt {attempt}/{MAX_PING_RETRIES}): {e}")
-            if attempt < MAX_PING_RETRIES:
-                time.sleep(attempt)
-    logger.info("All retry attempts exhausted")
-    return False
-
-
 if __name__ == '__main__':
     # lock_file must remain open for the process lifetime to hold the flock
     lock_file = open(f'{CURRENT_PATH}.snuphya.lock', 'w')
@@ -207,8 +195,7 @@ if __name__ == '__main__':
     db.init_db()
     try:
         log_collector.flush_lines()
-        ping_test(os.getenv('HEALTHCHECK_SNUPHYA') + "/start",
-                  "SNUPHYA announcement checker started")
+        healthcheck.ping_start("SNUPHYA announcement checker started")
 
         logger.info('starting updating announcement')
         try:
@@ -232,14 +219,14 @@ if __name__ == '__main__':
             logger.info('some batches left but terminating')
 
         log_payload = "\n".join(log_collector.flush_lines())
-        ping_test(os.getenv('HEALTHCHECK_SNUPHYA'), log_payload)
+        healthcheck.ping_success(log_payload)
 
     except Exception as e:
         if 'SNU server error' in str(e):
             logger.error('SNU server error occurred, skipping email notification')
             log_payload = "\n".join(log_collector.flush_lines())
-            ping_test(os.getenv('HEALTHCHECK_SNUPHYA'), log_payload)
+            healthcheck.ping_success(log_payload)
             raise
         else:
             error_message = f'에러 발생함\n{datetime.datetime.now()}\n\n{e}\n\n{traceback.format_exc()}'
-            ping_test(os.getenv('HEALTHCHECK_SNUPHYA') + "/fail", error_message)
+            healthcheck.ping_fail(error_message)

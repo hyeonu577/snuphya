@@ -1,5 +1,9 @@
 import base64
+import io
 import logging
+
+import anthropic
+from PIL import Image
 
 from config import HAIKU_MODEL, get_anthropic_client
 
@@ -7,8 +11,12 @@ logger = logging.getLogger('snuphya')
 
 # Haiku 5.5 thinks by default, and thinking counts toward max_tokens
 SUMMARY_MAX_TOKENS = 8000
-# Claude rejects images over 5 MB; drop them so the text still gets summarized
-MAX_IMAGE_BASE64_LENGTH = 5 * 1024 * 1024
+# The Claude API rejects the whole request for an image over 10 MB of base64 or 8000 px a side,
+# or over 3000 px a side once the request carries more than 20 images
+MAX_IMAGE_BASE64_LENGTH = 10 * 1024 * 1024
+MAX_IMAGE_SIDE = 8000
+MAX_IMAGE_SIDE_MANY_IMAGES = 3000
+MANY_IMAGES_THRESHOLD = 20
 
 SUMMARY_SYSTEM_PROMPT = '''당신은 공지사항을 요약하는 전문가입니다. 공지사항 본문을 분석하여 3문장 이하로 요약하세요. 각 문장은 번호를 매기세요. 모든 응답은 한국어로 작성하세요. 단, 전문 용어는 다른 언어를 사용해도 됩니다.
 
@@ -60,42 +68,50 @@ SUMMARY_SYSTEM_PROMPT = '''당신은 공지사항을 요약하는 전문가입�
 - 정보를 정확히 요약하여 잘못된 해석이 없도록 주의하세요.'''
 
 
-_IMAGE_SIGNATURES = [
-    (b'\x89PNG\r\n\x1a\n', 'image/png'),
-    (b'\xff\xd8\xff', 'image/jpeg'),
-    (b'GIF87a', 'image/gif'),
-    (b'GIF89a', 'image/gif'),
-]
+_MEDIA_TYPES = {'PNG': 'image/png', 'JPEG': 'image/jpeg', 'GIF': 'image/gif', 'WEBP': 'image/webp'}
 
 
-def detect_image_media_type(image_code):
-    head = base64.b64decode(image_code[:16])
-    for signature, media_type in _IMAGE_SIGNATURES:
-        if head.startswith(signature):
-            return media_type
-    if head[:4] == b'RIFF' and head[8:12] == b'WEBP':
-        return 'image/webp'
-    return None
+def fit_image(image_code, max_side):
+    # returns (media_type, image_code) with the image shrunk to max_side, or None if Claude can't take it
+    image = Image.open(io.BytesIO(base64.b64decode(image_code)))
+    image_format = image.format
+    if image_format not in _MEDIA_TYPES:
+        return None
+    if max(image.size) > max_side:
+        image.thumbnail((max_side, max_side))
+        buffer = io.BytesIO()
+        image.save(buffer, format=image_format, quality=90)
+        image_code = base64.b64encode(buffer.getvalue()).decode('utf-8')
+    return _MEDIA_TYPES[image_format], image_code
 
 
-def make_image_block(image_code):
+def make_image_block(image_code, max_side, title):
+    # a skipped image still leaves the text to be summarized
     if not image_code:  # download_image returns False on failure
         return None
-    if len(image_code) > MAX_IMAGE_BASE64_LENGTH:
-        logger.warning('image over 5 MB, skipping it in the summary request')
+    try:
+        fitted = fit_image(image_code, max_side)
+    except (OSError, ValueError, Image.DecompressionBombError):
+        fitted = None
+    if fitted is None:
+        logger.warning(f'{title}: unreadable or unsupported image, skipping it in the summary request')
         return None
-    media_type = detect_image_media_type(image_code)
-    if media_type is None:
-        logger.warning('unsupported image format, skipping it in the summary request')
+    media_type, image_code = fitted
+    if len(image_code) > MAX_IMAGE_BASE64_LENGTH:
+        logger.warning(f'{title}: image over 10 MB, skipping it in the summary request')
         return None
     return {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": image_code}}
 
 
 def generate_batch_request(announcement):
     message = f'제목: {announcement["title"]}\n본문: {announcement["body"]}'
-    image_blocks = [block for block in map(make_image_block, announcement.get('image_code', [])) if block]
+    image_codes = announcement.get('image_code', [])
+    max_side = MAX_IMAGE_SIDE_MANY_IMAGES if len(image_codes) > MANY_IMAGES_THRESHOLD else MAX_IMAGE_SIDE
+    image_blocks = [block for block in (make_image_block(code, max_side, announcement['title'])
+                                        for code in image_codes) if block]
     if image_blocks:
-        final_user_message = [{"type": "text", "text": message}] + image_blocks
+        # Claude works best with images placed before the text
+        final_user_message = image_blocks + [{"type": "text", "text": message}]
     else:
         final_user_message = message
     return {
@@ -142,13 +158,20 @@ def get_batch_result(batch_id):
         raise Exception('failed')
     # keep the client referenced until the results stream is fully read
     client = get_anthropic_client()
-    batch = client.messages.batches.retrieve(batch_id)
+    try:
+        batch = client.messages.batches.retrieve(batch_id)
+    except anthropic.NotFoundError:
+        # deleted, or created under a key from another workspace
+        raise Exception('failed')
     if batch.processing_status in ['in_progress', 'canceling']:
         raise Exception('in progress')
     if batch.processing_status != 'ended':
         raise Exception('unexpected error')
-    # results_url is gone once the 29-day retention passes
-    results = list(client.messages.batches.results(batch_id)) if batch.results_url else []
+    try:
+        results = list(client.messages.batches.results(batch_id)) if batch.results_url else []
+    except anthropic.NotFoundError:
+        # results can no longer be downloaded after the 29-day retention
+        results = []
     if batch.request_counts.succeeded == 0 or not results:
         for each in results:
             logger.error(f'{each.custom_id} 요약 실패 원인: {describe_failure(each.result)}')

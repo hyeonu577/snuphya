@@ -2,6 +2,7 @@ import logging
 import os
 import smtplib
 
+from anthropic import transform_schema
 from todoist_api_python.api import TodoistAPI
 from true_email import true_email
 from true_line import true_line
@@ -68,18 +69,22 @@ def analyze_announcement_if_urgent(announcement_subject, announcement_content):
         f"<제목>\n{announcement_subject}\n</제목>\n\n"
         f"<내용>\n{announcement_content}\n</내용>"
     )
-    response = get_anthropic_client().messages.parse(
+    response = get_anthropic_client().messages.create(
         model=HAIKU_MODEL,
         max_tokens=URGENCY_MAX_TOKENS,
         system=system_instruction,
         messages=[{"role": "user", "content": user_input}],
-        output_format=AnnouncementCheck,
-        output_config={"effort": "medium"},
+        output_config={
+            "effort": "medium",
+            "format": {"type": "json_schema", "schema": transform_schema(AnnouncementCheck)},
+        },
+        timeout=60.0,
     )
-    result = response.parsed_output
-    if result is None:
-        # refusal or max_tokens leaves no structured answer to act on
-        raise RuntimeError(f'urgency analysis returned no result: stop_reason={response.stop_reason}')
+    # a refusal or max_tokens stop leaves partial JSON, so check before validating
+    if response.stop_reason != 'end_turn':
+        raise RuntimeError(f'urgency analysis did not finish: stop_reason={response.stop_reason}')
+    result = AnnouncementCheck.model_validate_json(
+        ''.join(block.text for block in response.content if block.type == 'text'))
     logger.info(f'{announcement_subject}\n분석 결과: {result}')
     return result
 

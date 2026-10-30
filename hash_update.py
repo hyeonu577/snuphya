@@ -4,7 +4,6 @@ import smtplib
 import jsonlines
 import os
 import datetime
-import openai
 from true_email import true_email
 import re
 from selenium import webdriver

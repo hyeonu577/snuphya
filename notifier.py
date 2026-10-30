@@ -6,10 +6,13 @@ from todoist_api_python.api import TodoistAPI
 from true_email import true_email
 from true_line import true_line
 
-from config import get_openai_client
+from config import HAIKU_MODEL, get_anthropic_client
 from models import AnnouncementCheck
 
 logger = logging.getLogger('snuphya')
+
+# Haiku 5.5 thinks by default, and thinking counts toward max_tokens
+URGENCY_MAX_TOKENS = 8000
 
 
 def send_announcement_email(subject, body, announcement):
@@ -55,7 +58,6 @@ def format_announcement_body(announcement, summary=None):
 
 
 def analyze_announcement_if_urgent(announcement_subject, announcement_content):
-    client = get_openai_client()
     system_instruction = (
         "당신은 공지사항을 분석하는 행정 보조 AI입니다. "
         "주어진 제목과 내용을 바탕으로 다음 두 가지를 판단하여 구조화된 데이터로 반환하세요.\n"
@@ -66,15 +68,18 @@ def analyze_announcement_if_urgent(announcement_subject, announcement_content):
         f"<제목>\n{announcement_subject}\n</제목>\n\n"
         f"<내용>\n{announcement_content}\n</내용>"
     )
-    completion = client.beta.chat.completions.parse(
-        model="gpt-5-mini-2025-08-07",
-        messages=[
-            {"role": "system", "content": system_instruction},
-            {"role": "user", "content": user_input},
-        ],
-        response_format=AnnouncementCheck,
+    response = get_anthropic_client().messages.parse(
+        model=HAIKU_MODEL,
+        max_tokens=URGENCY_MAX_TOKENS,
+        system=system_instruction,
+        messages=[{"role": "user", "content": user_input}],
+        output_format=AnnouncementCheck,
+        output_config={"effort": "medium"},
     )
-    result = completion.choices[0].message.parsed
+    result = response.parsed_output
+    if result is None:
+        # refusal or max_tokens leaves no structured answer to act on
+        raise RuntimeError(f'urgency analysis returned no result: stop_reason={response.stop_reason}')
     logger.info(f'{announcement_subject}\n분석 결과: {result}')
     return result
 

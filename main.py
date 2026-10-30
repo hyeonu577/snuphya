@@ -120,8 +120,8 @@ def start_batch():
     if not announcement_list:
         logger.info('no procedendum announcement')
         return None
-    jsonl_file_path = batch.generate_batch_file(announcement_list)
-    batch_obj = batch.start_processing_batch_file(jsonl_file_path)
+    requests = batch.generate_batch_requests(announcement_list)
+    batch_obj = batch.start_processing_batch(requests)
     batch_id = batch_obj.id
     db.add_processing_batch(batch_id)
     scraper.update_announcement_json_file_with_batch_id(announcement_list, batch_id)

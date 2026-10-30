@@ -1,13 +1,14 @@
-import datetime
-import json
+import base64
 import logging
-import os
 
-import jsonlines
-
-from config import JSONL_FOLDER, get_openai_client
+from config import HAIKU_MODEL, get_anthropic_client
 
 logger = logging.getLogger('snuphya')
+
+# Haiku 5.5 thinks by default, and thinking counts toward max_tokens
+SUMMARY_MAX_TOKENS = 8000
+# Claude rejects images over 5 MB; drop them so the text still gets summarized
+MAX_IMAGE_BASE64_LENGTH = 5 * 1024 * 1024
 
 SUMMARY_SYSTEM_PROMPT = '''당신은 공지사항을 요약하는 전문가입니다. 공지사항 본문을 분석하여 3문장 이하로 요약하세요. 각 문장은 번호를 매기세요. 모든 응답은 한국어로 작성하세요. 단, 전문 용어는 다른 언어를 사용해도 됩니다.
 
@@ -59,86 +60,110 @@ SUMMARY_SYSTEM_PROMPT = '''당신은 공지사항을 요약하는 전문가입�
 - 정보를 정확히 요약하여 잘못된 해석이 없도록 주의하세요.'''
 
 
-def generate_each_line_of_batch_file(announcement):
+_IMAGE_SIGNATURES = [
+    (b'\x89PNG\r\n\x1a\n', 'image/png'),
+    (b'\xff\xd8\xff', 'image/jpeg'),
+    (b'GIF87a', 'image/gif'),
+    (b'GIF89a', 'image/gif'),
+]
+
+
+def detect_image_media_type(image_code):
+    head = base64.b64decode(image_code[:16])
+    for signature, media_type in _IMAGE_SIGNATURES:
+        if head.startswith(signature):
+            return media_type
+    if head[:4] == b'RIFF' and head[8:12] == b'WEBP':
+        return 'image/webp'
+    return None
+
+
+def make_image_block(image_code):
+    if not image_code:  # download_image returns False on failure
+        return None
+    if len(image_code) > MAX_IMAGE_BASE64_LENGTH:
+        logger.warning('image over 5 MB, skipping it in the summary request')
+        return None
+    media_type = detect_image_media_type(image_code)
+    if media_type is None:
+        logger.warning('unsupported image format, skipping it in the summary request')
+        return None
+    return {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": image_code}}
+
+
+def generate_batch_request(announcement):
     message = f'제목: {announcement["title"]}\n본문: {announcement["body"]}'
-    if 'image_code' in announcement:
-        final_user_message = [{"type": "text", "text": message}]
-        for each_image_code in announcement['image_code']:
-            final_user_message.append(
-                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{each_image_code}"}})
+    image_blocks = [block for block in map(make_image_block, announcement.get('image_code', [])) if block]
+    if image_blocks:
+        final_user_message = [{"type": "text", "text": message}] + image_blocks
     else:
         final_user_message = message
     return {
         "custom_id": announcement['hash'],
-        "method": "POST",
-        "url": "/v1/chat/completions",
-        "body": {
-            "messages": [
-                {"role": "system", "content": SUMMARY_SYSTEM_PROMPT},
-                {"role": "user", "content": final_user_message}
-            ],
-            "max_tokens": 500,
-            "temperature": 0.3,
-            "model": "gpt-4.1-nano"
+        "params": {
+            "model": HAIKU_MODEL,
+            "max_tokens": SUMMARY_MAX_TOKENS,
+            "system": SUMMARY_SYSTEM_PROMPT,
+            "messages": [{"role": "user", "content": final_user_message}],
+            "output_config": {"effort": "medium"},
         }
     }
 
 
-def generate_batch_file(announcement_list):
-    jsonl_data = [generate_each_line_of_batch_file(a) for a in announcement_list]
-    jsonl_file_name = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
-    jsonl_file_path = f"{JSONL_FOLDER}/{jsonl_file_name}.jsonl"
-    with jsonlines.open(jsonl_file_path, mode="w") as writer:
-        writer.write_all(jsonl_data)
-    logger.info(f'generated batch file: {jsonl_file_path}')
-    return jsonl_file_path
+def generate_batch_requests(announcement_list):
+    return [generate_batch_request(a) for a in announcement_list]
 
 
-def upload_batch_file(batch_file_path):
-    client = get_openai_client()
-    with open(batch_file_path, "rb") as f:
-        batch_input_file = client.files.create(file=f, purpose="batch")
-    os.remove(batch_file_path)
-    return batch_input_file
+def start_processing_batch(requests):
+    batch = get_anthropic_client().messages.batches.create(requests=requests)
+    logger.info(f'created batch {batch.id} with {len(requests)} request(s)')
+    return batch
 
 
-def start_processing_batch_file(batch_file_path):
-    batch_input_file = upload_batch_file(batch_file_path)
-    client = get_openai_client()
-    return client.batches.create(
-        input_file_id=batch_input_file.id,
-        endpoint="/v1/chat/completions",
-        completion_window="24h"
-    )
+def extract_summary_text(message):
+    # only a cleanly finished response counts; max_tokens or refusal yields None
+    if message.stop_reason != 'end_turn':
+        return None
+    text = ''.join(block.text for block in message.content if block.type == 'text')
+    return text if text.strip() else None
+
+
+def describe_failure(result):
+    if result.type == 'succeeded':
+        return f'stop_reason={result.message.stop_reason}'
+    if result.type == 'errored':
+        return str(result.error)[:300]
+    return result.type  # canceled or expired
 
 
 def get_batch_result(batch_id):
-    client = get_openai_client()
-    batch = client.batches.retrieve(batch_id)
-    if batch.status == 'completed':
-        if batch.request_counts.completed == 0:
-            raise Exception('failed')
-        file_response = client.files.content(batch.output_file_id)
-        good_result = file_response.text
-        if batch.request_counts.failed == 0:
-            return good_result
-        error_response = client.files.content(batch.error_file_id)
-        return good_result + error_response.text
-    elif batch.status in ['validating', 'in_progress', 'finalizing']:
-        raise Exception('in progress')
-    elif batch.status in ['failed', 'expired', 'cancelling', 'cancelled']:
+    if not batch_id.startswith('msgbatch_'):
+        # OpenAI batch left over from before the switch to Claude
         raise Exception('failed')
-    else:
+    # keep the client referenced until the results stream is fully read
+    client = get_anthropic_client()
+    batch = client.messages.batches.retrieve(batch_id)
+    if batch.processing_status in ['in_progress', 'canceling']:
+        raise Exception('in progress')
+    if batch.processing_status != 'ended':
         raise Exception('unexpected error')
+    # results_url is gone once the 29-day retention passes
+    results = list(client.messages.batches.results(batch_id)) if batch.results_url else []
+    if batch.request_counts.succeeded == 0 or not results:
+        for each in results:
+            logger.error(f'{each.custom_id} 요약 실패 원인: {describe_failure(each.result)}')
+        raise Exception('failed')
+    return results
 
 
 def convert_batch_result_into_readable_form(batch_result):
     results = []
-    for line in batch_result.splitlines():
-        entry = json.loads(line)
-        if entry['response']['status_code'] == 200:
-            answer = entry["response"]["body"]["choices"][0]["message"]["content"]
-        else:
-            answer = '요약 중 오류 발생'
-        results.append((entry['custom_id'], answer))
+    for each in batch_result:
+        summary = None
+        if each.result.type == 'succeeded':
+            summary = extract_summary_text(each.result.message)
+        if summary is None:
+            logger.error(f'{each.custom_id} 요약 오류: {describe_failure(each.result)}')
+            summary = '요약 중 오류 발생'
+        results.append((each.custom_id, summary))
     return results
